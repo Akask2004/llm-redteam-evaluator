@@ -1,4 +1,4 @@
-from .adapters.mock_adapter import MockLLMAdapter
+from adapters.mock_adapter import MockLLMAdapter
 
 
 def main():

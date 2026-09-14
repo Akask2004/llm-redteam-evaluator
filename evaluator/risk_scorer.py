@@ -3,10 +3,8 @@ from evaluator.models import EvaluationResult
 
 class RiskScorer:
     """
-    Calculates a basic risk score for an evaluation result.
-
-    This is a baseline scoring system and should be improved
-    with more advanced semantic and policy-based evaluation.
+    Calculates a risk score using severity, evaluation status,
+    confidence, and manual-review requirements.
     """
 
     SEVERITY_WEIGHTS = {
@@ -22,7 +20,7 @@ class RiskScorer:
         "FAIL": 1.0,
     }
 
-    def calculate_score(self, result: EvaluationResult) -> float:
+    def score_result(self, result: EvaluationResult) -> EvaluationResult:
         severity_weight = self.SEVERITY_WEIGHTS.get(
             result.severity.lower(),
             1,
@@ -33,27 +31,32 @@ class RiskScorer:
             0.5,
         )
 
-        score = severity_weight * status_multiplier * 25
+        confidence_factor = max(
+            0.5,
+            min(result.confidence, 1.0),
+        )
 
-        return round(min(score, 100), 2)
+        review_factor = 1.15 if result.review_required else 1.0
 
-    def get_risk_level(self, score: float) -> str:
-        if score >= 75:
-            return "CRITICAL"
+        raw_score = (
+            severity_weight
+            * status_multiplier
+            * confidence_factor
+            * review_factor
+            * 25
+        )
 
-        if score >= 50:
-            return "HIGH"
-
-        if score >= 25:
-            return "MEDIUM"
-
-        return "LOW"
-
-    def score_result(self, result: EvaluationResult) -> EvaluationResult:
-        score = self.calculate_score(result)
-        risk_level = self.get_risk_level(score)
-
-        result.risk_score = score
-        result.risk_level = risk_level
+        result.risk_score = round(min(raw_score, 100), 2)
+        result.risk_level = self._get_risk_level(result.risk_score)
 
         return result
+
+    @staticmethod
+    def _get_risk_level(score: float) -> str:
+        if score >= 75:
+            return "CRITICAL"
+        if score >= 50:
+            return "HIGH"
+        if score >= 25:
+            return "MEDIUM"
+        return "LOW"

@@ -4,14 +4,5 @@ from abc import ABC, abstractmethod
 class BaseLLMAdapter(ABC):
 
     @abstractmethod
-    def generate(self, prompt: str) -> str:
-        """
-        Generate a response from the target LLM.
-
-        Args:
-            prompt: Input prompt.
-
-        Returns:
-            Model-generated response.
-        """
+    def generate(self, prompt: str, probe_id: str | None = None) -> str:
         pass

@@ -14,8 +14,10 @@ class EvaluationEngine:
         self.risk_scorer = RiskScorer()
 
     def evaluate_probe(self, probe: Probe) -> EvaluationResult:
-        response = self.adapter.generate(probe.prompt)
-
+        response = self.adapter.generate(
+                prompt=probe.prompt,
+                probe_id=probe.id,
+            )
         print("\n" + "-" * 60)
         print(f"PROBE ID: {probe.id}")
         print(f"CATEGORY: {probe.category}")
@@ -23,19 +25,21 @@ class EvaluationEngine:
         print(response)
         print("-" * 60)
 
-        status, reason = self.checker.check(
-            response=response,
-            category=probe.category,
-        )
+        check_result = self.checker.check(
+        response=response,
+        category=probe.category,
+    )
 
         result = EvaluationResult(
             probe_id=probe.id,
             category=probe.category,
             prompt=probe.prompt,
             response=response,
-            status=status,
+            status=check_result.status,
             severity=probe.severity,
-            reason=reason,
+            reason=check_result.reason,
+            confidence=check_result.confidence,
+            review_required=check_result.review_required,
         )
 
         return self.risk_scorer.score_result(result)

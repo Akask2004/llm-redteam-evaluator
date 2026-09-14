@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd
 
 from adapters.mock_adapter import MockLLMAdapter
 from evaluator.engine import EvaluationEngine
@@ -7,62 +8,92 @@ from reports.metrics import calculate_metrics
 
 
 st.set_page_config(
-    page_title="LLM Red-Team Tester",
+    page_title="LLM Red-Team Evaluator",
     page_icon="🛡️",
     layout="wide",
 )
 
-st.title("🛡️ LLM Red-Team & Jailbreak Vulnerability Tester")
 
+st.title("🛡️ LLM Evaluation & Red-Teaming Dashboard")
 st.write(
-    """
-    An authorized testing platform for evaluating LLM behavior against
-    jailbreak, prompt-injection, and system-prompt-leakage probes.
-    """
+    "Evaluate model responses against jailbreak, prompt-injection, "
+    "and system-prompt leakage probes."
 )
 
-st.warning(
-    "Use this demo only for models and applications that you are authorized to test."
+
+# Sidebar
+st.sidebar.header("Evaluation Settings")
+
+adapter_type = st.sidebar.selectbox(
+    "Select Model Adapter",
+    ["Mock LLM"],
 )
 
-adapter_type = st.selectbox(
-    "Select evaluation mode",
-    ["Mock LLM Demo"],
-)
+run_evaluation = st.sidebar.button("Run Evaluation")
 
-if st.button("Run Red-Team Evaluation"):
-    with st.spinner("Running security probes..."):
+
+if run_evaluation:
+    with st.spinner("Running evaluation..."):
         adapter = MockLLMAdapter()
-        probe_manager = ProbeManager()
-        probes = probe_manager.get_all_probes()
-
         engine = EvaluationEngine(adapter)
+        probe_manager = ProbeManager()
+
+        probes = probe_manager.get_all_probes()
         results = engine.evaluate(probes)
+
         metrics = calculate_metrics(results)
 
-    st.success("Evaluation completed successfully.")
+        st.session_state["results"] = results
+        st.session_state["metrics"] = metrics
+
+
+if "results" in st.session_state:
+    results = st.session_state["results"]
+    metrics = st.session_state["metrics"]
+
+    st.subheader("Evaluation Summary")
 
     col1, col2, col3, col4 = st.columns(4)
 
-    col1.metric("Total Tests", metrics["total_tests"])
+    col1.metric("Total Probes", metrics["total_probes"])
     col2.metric("Passed", metrics["passed"])
     col3.metric("Failed", metrics["failed"])
     col4.metric("Uncertain", metrics["uncertain"])
 
-    st.subheader("Evaluation Summary")
+    st.subheader("Performance Metrics")
 
-    st.write({
-        "Pass Rate": f'{metrics["pass_rate"]}%',
-        "Failure Rate": f'{metrics["failure_rate"]}%',
-        "Average Risk Score": metrics["average_risk_score"],
-    })
+    metric_col1, metric_col2 = st.columns(2)
 
-    st.subheader("Probe Results")
+    metric_col1.metric(
+        "Pass Rate",
+        f"{metrics['pass_rate']}%",
+    )
 
-    table_data = []
+    metric_col2.metric(
+        "Failure Rate",
+        f"{metrics['failure_rate']}%",
+    )
+
+    st.subheader("Risk Distribution")
+
+    risk_distribution = metrics["risk_distribution"]
+
+    if risk_distribution:
+        risk_df = pd.DataFrame(
+            list(risk_distribution.items()),
+            columns=["Risk Level", "Count"],
+        )
+
+        st.bar_chart(
+            risk_df.set_index("Risk Level")
+        )
+
+    st.subheader("Detailed Results")
+
+    result_rows = []
 
     for result in results:
-        table_data.append(
+        result_rows.append(
             {
                 "Probe ID": result.probe_id,
                 "Category": result.category,
@@ -70,19 +101,19 @@ if st.button("Run Red-Team Evaluation"):
                 "Severity": result.severity,
                 "Risk Score": result.risk_score,
                 "Risk Level": result.risk_level,
+                "Confidence": result.confidence,
+                "Review Required": result.review_required,
                 "Reason": result.reason,
+                "Response": result.response,
             }
         )
 
-    st.dataframe(table_data, use_container_width=True)
+    results_df = pd.DataFrame(result_rows)
 
-    st.subheader("Detailed Responses")
+    st.dataframe(
+        results_df,
+        use_container_width=True,
+    )
 
-    for result in results:
-        with st.expander(f"{result.probe_id} — {result.status}"):
-            st.write("**Category:**", result.category)
-            st.write("**Prompt:**", result.prompt)
-            st.write("**Model Response:**", result.response)
-            st.write("**Reason:**", result.reason)
-            st.write("**Risk Score:**", result.risk_score)
-            st.write("**Risk Level:**", result.risk_level)
+else:
+    st.info("Click 'Run Evaluation' to start testing.")
