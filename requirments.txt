@@ -1,7 +1,0 @@
-gradio
-pandas
-pydantic
-python-dotenv
-ollama
-streamlit
-pytest

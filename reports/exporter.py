@@ -1,76 +1,164 @@
 import csv
+import io
 import json
-
-from dataclasses import asdict
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any, Dict, List
+from datetime import datetime
+from typing import List
 
 from evaluator.models import EvaluationResult
+from reports.metrics import calculate_metrics
 
 
-def get_timestamp() -> str:
-    """Return the current UTC timestamp."""
-    return datetime.now(timezone.utc).isoformat()
+class ReportExporter:
+    """
+    Exports evaluation results into JSON and CSV formats.
+    """
 
+    @staticmethod
+    def _serialize_result(result: EvaluationResult) -> dict:
+        """
+        Convert an EvaluationResult object into a dictionary.
+        """
+
+        return {
+            "probe_id": result.probe_id,
+            "category": result.category,
+            "prompt": result.prompt,
+            "expected_behavior": result.expected_behavior,
+            "response": result.response,
+            "status": result.status,
+            "severity": result.severity,
+            "reason": result.reason,
+            "confidence": result.confidence,
+            "review_required": result.review_required,
+            "risk_score": result.risk_score,
+            "risk_level": result.risk_level,
+            "latency_ms": result.latency_ms,
+            "error": result.error,
+        }
+
+    @classmethod
+    def to_json(
+        cls,
+        results: List[EvaluationResult],
+    ) -> str:
+        """
+        Export evaluation results as a JSON string.
+        """
+
+        data = [
+            cls._serialize_result(result)
+            for result in results
+        ]
+
+        return json.dumps(
+            data,
+            indent=4,
+            ensure_ascii=False,
+        )
+
+    @classmethod
+    def to_report_json(
+        cls,
+        results: List[EvaluationResult],
+        adapter: str = "unknown",
+        model_name: str | None = None,
+    ) -> str:
+        """
+        Export a complete report with metadata, metrics, and results.
+        """
+
+        report = {
+            "metadata": {
+                "generated_at": datetime.now().isoformat(timespec="seconds"),
+                "adapter": adapter,
+                "model_name": model_name,
+            },
+            "metrics": calculate_metrics(results),
+            "results": [
+                cls._serialize_result(result)
+                for result in results
+            ],
+        }
+
+        return json.dumps(
+            report,
+            indent=4,
+            ensure_ascii=False,
+        )
+
+    @classmethod
+    def to_csv(
+        cls,
+        results: List[EvaluationResult],
+    ) -> str:
+        """
+        Export evaluation results as a CSV string.
+        """
+
+        data = [
+            cls._serialize_result(result)
+            for result in results
+        ]
+
+        if not data:
+            return ""
+
+        output = io.StringIO()
+
+        writer = csv.DictWriter(
+            output,
+            fieldnames=data[0].keys(),
+        )
+
+        writer.writeheader()
+        writer.writerows(data)
+
+        return output.getvalue()
+
+
+# ---------------------------------------------------------
+# Backward-compatible helper functions
+# ---------------------------------------------------------
 
 def export_json(
     results: List[EvaluationResult],
-    metrics: Dict[str, Any],
-    output_path: str,
-) -> Path:
-    """Export evaluation results and metrics to JSON."""
+) -> str:
+    """
+    Backward-compatible JSON export function.
 
-    path = Path(output_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    Allows older code to use:
 
-    report = {
-        "generated_at": get_timestamp(),
-        "summary": metrics,
-        "results": [asdict(result) for result in results],
-    }
+        export_json(results)
+    """
 
-    with path.open("w", encoding="utf-8") as file:
-        json.dump(report, file, indent=4)
-
-    return path
+    return ReportExporter.to_json(results)
 
 
 def export_csv(
     results: List[EvaluationResult],
-    output_path: str,
-) -> Path:
-    """Export evaluation results to CSV."""
+) -> str:
+    """
+    Backward-compatible CSV export function.
 
-    path = Path(output_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    Allows older code to use:
 
-    fieldnames = [
-        "probe_id",
-        "category",
-        "prompt",
-        "response",
-        "status",
-        "severity",
-        "reason",
-        "risk_score",
-        "risk_level",
-    ]
+        export_csv(results)
+    """
 
-    with path.open(
-        "w",
-        newline="",
-        encoding="utf-8",
-    ) as file:
+    return ReportExporter.to_csv(results)
 
-        writer = csv.DictWriter(
-            file,
-            fieldnames=fieldnames,
-        )
 
-        writer.writeheader()
+def export_report_json(
+    results: List[EvaluationResult],
+    adapter: str = "unknown",
+    model_name: str | None = None,
+) -> str:
+    """
+    Export a full report envelope with metadata, metrics, and results.
+    """
 
-        for result in results:
-            writer.writerow(asdict(result))
-
-    return path
+    return ReportExporter.to_report_json(
+        results,
+        adapter=adapter,
+        model_name=model_name,
+    )

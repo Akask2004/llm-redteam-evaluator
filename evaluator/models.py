@@ -39,6 +39,7 @@ class EvaluationResult:
     reason: str
 
     # New evaluation metadata
+    expected_behavior: str = ""
     confidence: float = 0.0
     review_required: bool = False
 

@@ -1,28 +1,34 @@
-import ollama
+import requests
 
 from adapters.base import BaseLLMAdapter
 
 
 class OllamaAdapter(BaseLLMAdapter):
-    """
-    Adapter for locally running Ollama models.
-    """
-
     def __init__(
         self,
-        model: str = "qwen2.5:3b",
+        model_name: str = "llama3.2:3b",
+        base_url: str = "http://localhost:11434",
     ):
-        self.model = model
+        self.model_name = model_name
+        self.base_url = base_url.rstrip("/")
 
-    def generate(self, prompt: str) -> str:
-        response = ollama.chat(
-            model=self.model,
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt,
-                }
-            ],
+    def generate(
+        self,
+        prompt: str,
+        probe_id: str | None = None,
+    ) -> str:
+        response = requests.post(
+            f"{self.base_url}/api/generate",
+            json={
+                "model": self.model_name,
+                "prompt": prompt,
+                "stream": False,
+            },
+            timeout=120,
         )
 
-        return response["message"]["content"]
+        response.raise_for_status()
+
+        data = response.json()
+
+        return data.get("response", "")

@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Red-Team Evaluator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+    <header class="app-header">
+        <div class="header-content">
+            <div>
+                <p class="eyebrow">Authorized model safety testing</p>
+                <h1>LLM Red-Team Evaluator</h1>
+            </div>
+
+            <div class="header-meta">
+                <span>Flask Dashboard</span>
+                {% if metadata.get("adapter") %}
+                    <span>{{ metadata.get("adapter") }}{% if metadata.get("model_name") %}: {{ metadata.get("model_name") }}{% endif %}</span>
+                {% endif %}
+                {% if last_updated %}
+                    <span>Updated {{ last_updated }}</span>
+                {% endif %}
+            </div>
+        </div>
+    </header>
+
+    <main class="shell">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="alerts">
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <section class="control-panel">
+            <div class="panel-copy">
+                <h2>Evaluation Run</h2>
+                <p>Run deterministic sample probes or send them to a local Ollama model.</p>
+            </div>
+
+            <form class="run-form" action="{{ url_for('run_evaluation') }}" method="POST" onsubmit="showLoading()">
+                <label>
+                    Adapter
+                    <select name="adapter" id="adapterSelect" onchange="toggleOllamaFields()">
+                        <option value="mock">Mock demo</option>
+                        <option value="ollama">Ollama</option>
+                    </select>
+                </label>
+
+                <label class="ollama-field">
+                    Model
+                    <input name="model_name" type="text" value="qwen2.5:3b">
+                </label>
+
+                <label class="ollama-field">
+                    Base URL
+                    <input name="base_url" type="url" value="http://localhost:11434">
+                </label>
+
+                <button type="submit" class="primary-button" id="runButton">Run Evaluation</button>
+            </form>
+        </section>
+
+        <p id="loadingMessage" class="loading-message">Evaluation is running. This can take a moment with Ollama.</p>
+
+        <section class="summary-grid" aria-label="Evaluation summary">
+            <article class="metric-card">
+                <span>Total Probes</span>
+                <strong>{{ metrics.get("total_probes", 0) }}</strong>
+                <small>Evaluation cases</small>
+            </article>
+
+            <article class="metric-card metric-pass">
+                <span>Passed</span>
+                <strong>{{ metrics.get("passed", 0) }}</strong>
+                <small>{{ metrics.get("pass_rate", 0) }}% pass rate</small>
+            </article>
+
+            <article class="metric-card metric-fail">
+                <span>Failed</span>
+                <strong>{{ metrics.get("failed", 0) }}</strong>
+                <small>{{ metrics.get("failure_rate", 0) }}% failure rate</small>
+            </article>
+
+            <article class="metric-card metric-uncertain">
+                <span>Uncertain</span>
+                <strong>{{ metrics.get("uncertain", 0) }}</strong>
+                <small>Manual triage candidates</small>
+            </article>
+        </section>
+
+        <section class="toolbar">
+            <div>
+                <h2>Results</h2>
+                <p>{{ results|length }} probe results loaded</p>
+            </div>
+
+            <div class="toolbar-actions">
+                <a class="secondary-button {% if not has_json_report %}is-disabled{% endif %}"
+                   href="{{ url_for('download_report', file_type='json') }}">JSON</a>
+                <a class="secondary-button {% if not has_csv_report %}is-disabled{% endif %}"
+                   href="{{ url_for('download_report', file_type='csv') }}">CSV</a>
+                {% if results %}
+                    <form action="{{ url_for('clear_results') }}" method="POST">
+                        <button type="submit" class="secondary-button danger-button">Clear</button>
+                    </form>
+                {% endif %}
+            </div>
+        </section>
+
+        {% if results %}
+            <section class="results-table-wrap">
+                <table class="results-table">
+                    <thead>
+                        <tr>
+                            <th>Probe</th>
+                            <th>Status</th>
+                            <th>Risk</th>
+                            <th>Review</th>
+                            <th>Confidence</th>
+                            <th>Reason</th>
+                            <th>Expected</th>
+                            <th>Response</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for result in results %}
+                            {% set status = result.get("status", "UNKNOWN") %}
+                            {% set risk_level = result.get("risk_level", "LOW") %}
+                            <tr>
+                                <td>
+                                    <strong>{{ result.get("probe_id", "") }}</strong>
+                                    <span>{{ result.get("category", "") }}</span>
+                                    <small>{{ result.get("severity", "low") }}</small>
+                                </td>
+                                <td>
+                                    <span class="pill status-{{ status|lower }}">{{ status }}</span>
+                                </td>
+                                <td>
+                                    <span class="pill risk-{{ risk_level|lower }}">{{ risk_level }}</span>
+                                    <small>{{ result.get("risk_score", 0) }}</small>
+                                </td>
+                                <td>
+                                    {% if result.get("review_required", false) %}
+                                        <span class="pill review-yes">Required</span>
+                                    {% else %}
+                                        <span class="pill review-no">Clear</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ result.get("confidence", 0) }}</td>
+                                <td class="reason-cell">{{ result.get("reason", "") }}</td>
+                                <td class="reason-cell">{{ result.get("expected_behavior", "") }}</td>
+                                <td>
+                                    <details>
+                                        <summary>View</summary>
+                                        <p>{{ result.get("response", "") }}</p>
+                                    </details>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </section>
+        {% else %}
+            <section class="empty-state">
+                <h2>No Results Yet</h2>
+                <p>Run the mock demo for an instant dashboard or use Ollama when your local model server is ready.</p>
+            </section>
+        {% endif %}
+    </main>
+
+    <script>
+        function showLoading() {
+            const button = document.getElementById("runButton");
+            const message = document.getElementById("loadingMessage");
+
+            button.disabled = true;
+            button.textContent = "Running...";
+            message.style.display = "block";
+        }
+
+        function toggleOllamaFields() {
+            const select = document.getElementById("adapterSelect");
+            const fields = document.querySelectorAll(".ollama-field");
+            const visible = select.value === "ollama";
+
+            fields.forEach((field) => {
+                field.style.display = visible ? "grid" : "none";
+            });
+        }
+
+        toggleOllamaFields();
+    </script>
+</body>
+</html>
