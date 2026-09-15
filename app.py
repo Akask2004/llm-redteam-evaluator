@@ -32,9 +32,9 @@ RUNS_DIR = Path("reports/output/runs")
 
 @app.route("/", methods=["GET"])
 def dashboard():
+    has_report = REPORT_PATH.exists()
     show_report = session.pop("show_report_once", False)
-
-    if show_report:
+    if has_report and show_report:
         results, metrics, metadata = load_report()
     else:
         results, metrics, metadata = [], empty_metrics(), {}
@@ -44,11 +44,10 @@ def dashboard():
         results=results,
         metrics=metrics,
         metadata=metadata,
-        has_json_report=show_report and REPORT_PATH.exists(),
-        has_csv_report=show_report and CSV_REPORT_PATH.exists(),
-        last_updated=get_last_updated() if show_report else None,
+        has_json_report=has_report,
+        has_csv_report=CSV_REPORT_PATH.exists(),
+        last_updated=get_last_updated() if has_report else None,
     )
-
 
 @app.route("/run-evaluation", methods=["POST"])
 def run_evaluation():
